@@ -153,7 +153,7 @@ RaschModelEstimation<-cbind(RaschT$items, RaschModelEstimation)
 
 resumen <- data.frame(Modelo = c("glmer", "doubleglmer", "RM", "eirm", "Rasch", "tam"),
                       Deviance = round(c(-2 * logLik(glmermodel), -2 * logLik(doubleglmer),
-                                         -2 * RM$loglik, deviance(eirmodel$model), -2 * raschmod$log.Lik, tam$deviance), 0),
+                                         -2 * RM$loglik, -2 * logLik(eirmodel$model), -2 * raschmod$log.Lik, tam$deviance), 0),
                       AIC = round(c(AIC(glmermodel), AIC(doubleglmer), -2 * RM$loglik + 2 * RM$npar,
                                     AIC(eirmodel$model), AIC(raschmod), tam$ic$AIC), 0),
                       BIC = round(c(BIC(glmermodel), BIC(doubleglmer), -2 * RM$loglik + log(316),
