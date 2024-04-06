@@ -20,42 +20,55 @@ head(VerbAgg, 5)
 str(VerbAgg)
 names(VerbAgg)
 attach(VerbAgg)
-VerbAgg$r2<-ifelse(VerbAgg$r2=="N",0,1)# versión dicotómica de la respuesta: un factor con niveles N e Y
+VerbAgg$r2<-ifelse(VerbAgg$r2=="Y",1,0)# versión dicotómica de la respuesta: un factor con niveles N e Y
 VerbAgg$Gender<-ifelse(VerbAgg$Gender == "M", 1, 0)# versión dicotómica de la respuesta: un factor con niveles M y F
 str(VerbAgg)
 
 #--------------------------BigTable
 
-LLTM<-data.frame(items=c("Intercept","mode", "situ", "Blame", "Express"))
+RaschT<-data.frame(items=c("S1WantCurse", "S1WantScold", "S1WantShout", "S2WantCurse", 
+                           "S2WantScold", "S2WantShout", "S3WantCurse", "S3WantScold", 
+                           "S3WantShout", "S4WantCurse", "S4WantScold", "S4WantShout",  
+                           "S1DoCurse", "S1DoScold", "S1DoShout", "S2DoCurse", "S2DoScold", 
+                           "S2DoShout", "S3DoCurse", "S3DoScold","S3DoShout", "S4DoCurse", 
+                           "S4DoScold", "S4DoShout"))
 
-#Agregando codificación
-
-VerbAgg <- VerbAgg %>% mutate(mode = case_when(mode == "do" ~ 1,
-                                               mode == "want" ~ 0),
-                              situ = case_when(situ == "other" ~ 1,
-                                               situ == "self" ~ 0),
-                              Blame = case_when(btype == "curse" ~ 1/2,
-                                                btype == "scold" ~ 1/2,
-                                                btype == "shout" ~ -1),
-                              Express = case_when(btype == "curse" ~ 1/2,
-                                                  btype == "shout" ~ 1/2,
-                                                  btype == "scold" ~ -1))
-
-#------------------------glmer
+#--------------------------------------------- Rasch Model
 
 control=glmerControl(optimizer = "optimx", calc.derivs = FALSE, 
                      optCtrl = list(method = "nlminb", starttests = FALSE, kkt = FALSE))
 
-glmermodel <- glmer(resp ~ 1 + mode + situ  + Blame + Express + (1|id),
-              family=binomial("logit"), data=VerbAgg, control=control)
+glmermodel <- glmer(r2~-1+item+(1|id),family=binomial("logit"), data=VerbAgg, 
+                    control=control)
 
-summary(glmermodel)
+summary(glmermodel) ## 367 items value, 60 AIC, BIC values
 
-stglmer<-devfun2(glmermodel, useSc=TRUE)
+itemMax = max(fixed.effects(glmermodel)) # función del paquete lme4 function que extrae los valores estimados
+itemMin = min(fixed.effects(glmermodel))
 
-LLTM <- LLTM %>% 
+stdglmer<-devfun2(glmermodel, useSc=TRUE) # función del paquete lme4 que debulve una función que tiene los standard errors  
+
+RaschT <- RaschT %>% 
   mutate(glmermodel = fixed.effects(glmermodel)) %>% 
-  mutate(Std.Error.glmer = attr(stglmer, "stderr"))
+  mutate(Std.Error.glmer = attr(stdglmer,"stderr"))
+
+# Otra forma de ajustar el modelo
+doubleglmer <- glmer(r2 ~ -1+item+(1|id), data=VerbAgg, family = binomial) # warning messages
+
+doubleglmer <-glmer(r2 ~ -1+item+(1|id), data=VerbAgg, family = binomial,
+                 start = list(fixef = fixef(doubleglmer), theta = getME(doubleglmer, "theta")))  # Corrige el warning
+
+# theta -> Estimaciones de parámetros de efectos aleatorios: 
+# se parametrizan como los factores Cholesky relativos 
+# de cada término de efecto aleatorio.
+
+summary(doubleglmer) #Da los mismos resulatdos que glmermodel
+
+stdoubleglmer<-devfun2(glmermodel, useSc=TRUE)
+
+RaschT <- RaschT %>% 
+  mutate(doubleglmer = fixed.effects(doubleglmer)) %>% 
+  mutate(Std.Error.doubleglmer = attr(stdoubleglmer, "stderr"))
 
 #------------------- eirm 
 
@@ -63,11 +76,10 @@ if (! require("eirm"))  {install.packages("eirm")}
 
 library("eirm")
 
-eirmodel<-eirm(resp ~ 1 + mode + situ  + Blame + Express + (1|id), data=VerbAgg)
+eirmodel<-eirm(formula = "r2 ~ -1 + item + (1|id)", data = VerbAgg)
+print(eirmodel, difficulty =TRUE)
 
-print(eirmodel, difficulty = TRUE)
-
-LLTM <- LLTM %>% 
+RaschT <- RaschT %>%
   mutate(eirmmodel = as.data.frame(eirmodel$parameters)[, 1],
          std.error.eirm = as.data.frame(eirmodel$parameters)[, 2])
 
@@ -82,55 +94,66 @@ library(deltaPlotR)
 
 data("verbal")  # wide data
 
-#---------------------------------------------LLTM de eRm
+#-----------Genera el Rasch model con la función RM de eRm
+RM <- RM(verbal[1:24], se = T, sum0 = T)
+summary(RM)
 
-#----------- Qmatrix
+RMitems<-data.frame(items=c("S1WantScold", "S1WantShout", "S2WantCurse", "S2WantScold", "S2WantShout", "S3WantCurse", 
+                            "S3WantScold", "S3WantShout", "S4WantCurse", "S4WantScold", "S4WantShout",   "S1DoCurse", 
+                            "S1DoScold",  "S1DoShout",  "S2DoCurse", "S2DoScold", "S2DoShout", "S3DoCurse", 
+                           "S3DoScold","S3DoShout", "S4DoCurse", "S4DoScold", "S4DoShout"))
 
-qmat<- subset.data.frame(VerbAgg,select = c(item, btype, situ, mode)) %>% distinct()
+RMitems=cbind(RMitems, as.data.frame(RM$etapar))
+RMitems=cbind(RMitems, as.data.frame(RM$se.eta))
 
-qmat <- qmat %>% mutate( Blame = case_when(btype == "curse" ~ 1/2,
-                                                btype == "scold" ~ 1/2,
-                                                btype == "shout" ~ -1),
-                              Express = case_when(btype == "curse" ~ 1/2,
-                                                  btype == "shout" ~ 1/2,
-                                                  btype == "scold" ~ -1))
+RaschT<-full_join(RaschT, RMitems, by ="items")
 
-attach(qmat)
+#------------------------------ Rasch Model con función rasch de ltm
+if (! require("ltm"))  {install.packages("ltm")} # Análisis Rasch estándar con estimación CML
 
-qmat <- subset.data.frame(qmat, select = c(mode, situ, Express,Blame)) %>% as.matrix()
+library(ltm)
 
-#-----------
+data("verbal")
 
-LLTModel <- LLTM(verbal[1:24], qmat)
-summary(LLTModel)
+raschmod <- rasch(verbal[1:24], IRT.param = FALSE) 
+#Para que los coeficientes estimados que se devuelven no están en la parametrización IRT estándar. 
+#En lugar de eso, se estiman los parámetros de manera directa para cada ítem y para el parámetro de discriminación
 
-LLTModelitems=data.frame(items = names(LLTModel$etapar), LLTModel$etapar, row.names = NULL)
-LLTModelitems=cbind(LLTModelitems, as.data.frame(LLTModel$se.eta))
+summary(raschmod) 
 
-LLTM<-full_join(LLTM, LLTModelitems, by ="items")
+# No existe forma de obtener std.erro de la función rashc. En su lugar se puede hacer lo siguiente
 
-items <- data.frame(items=c("S1WantCurse", "S1WantScold", "S1WantShout", "S2WantCurse", 
-                           "S2WantScold", "S2WantShout", "S3WantCurse", "S3WantScold", 
-                           "S3WantShout", "S4WantCurse", "S4WantScold", "S4WantShout",  
-                           "S1DoCurse", "S1DoScold", "S1DoShout", "S2DoCurse", "S2DoScold", 
-                           "S2DoShout", "S3DoCurse", "S3DoScold","S3DoShout", "S4DoCurse", 
-                           "S4DoScold", "S4DoShout"))
+RaschT <- RaschT %>% 
+  mutate(rasch = as.data.frame(raschmod$coefficients)[,1]) %>% 
+  mutate(str.error.rasch = sqrt(diag(vcov(raschmod)))[1:24])
 
-items <- cbind(items, as.data.frame(LLTModel$betapar),row.names = NULL )
-items <- cbind(items, as.data.frame(LLTModel$se.beta))
+#---------------------------Función tam del paquete TAM
 
-write.csv(items, "itemsLLTM.csv")
+if (! require("TAM"))  {install.packages("TAM")} 
 
-##### --------- Resumen 
+library(TAM)
 
-resumen <- data.frame(Modelo = c("glmer", "eirm", "LLTM"),
-                      Deviance = round(c(-2 * logLik(glmermodel), deviance(eirmodel$model),
-                                         -2 * LLTModel$loglik), 0),
-                      AIC = round(c(AIC(glmermodel), AIC(eirmodel$model),
-                                    -2 * LLTModel$loglik + 2 * LLTModel$npar), 0),
-                      BIC = round(c(BIC(glmermodel), BIC(eirmodel$model),
-                                    -2 * LLTModel$loglik + log(316)), 0))
+data("verbal")
 
-write.csv(resumen, "ResumenLLTM.csv")
+tam<-tam(verbal[1:24], verbose = FALSE) # para evitar mns durante las iteraciones
 
-write.csv(LLTM, "LLTM.csv")
+tamframe<-as.data.frame(tam$xsi)
+
+RaschT <- RaschT %>% 
+  mutate(tam = tamframe[,1]) %>% 
+  mutate(str.error.tam = tamframe[,2])
+
+RaschModelEstimation<-round(RaschT[,2:13], 2) 
+
+RaschModelEstimation<-cbind(RaschT$items, RaschModelEstimation) 
+         
+        
+#####------------- Resumen 
+
+resumen <- data.frame(Modelo = c("glmer", "doubleglmer", "RM", "eirm", "Rasch", "tam"),
+                      Deviance = round(c(-2 * logLik(glmermodel), -2 * logLik(doubleglmer),
+                                         -2 * RM$loglik, -2 * logLik(eirmodel$model), -2 * raschmod$log.Lik, tam$deviance), 0),
+                      AIC = round(c(AIC(glmermodel), AIC(doubleglmer), -2 * RM$loglik + 2 * RM$npar,
+                                    AIC(eirmodel$model), AIC(raschmod), tam$ic$AIC), 0),
+                      BIC = round(c(BIC(glmermodel), BIC(doubleglmer), -2 * RM$loglik + log(316),
+                                    BIC(eirmodel$model), BIC(raschmod), tam$ic$BIC), 0))
