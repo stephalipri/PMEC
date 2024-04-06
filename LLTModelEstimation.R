@@ -86,7 +86,7 @@ data("verbal")  # wide data
 
 #----------- Qmatrix
 
-qmat<- select(VerbAgg, item, btype, situ, mode) %>% distinct()
+qmat<- subset.data.frame(VerbAgg,select = c(item, btype, situ, mode)) %>% distinct()
 
 qmat <- qmat %>% mutate( Blame = case_when(btype == "curse" ~ 1/2,
                                                 btype == "scold" ~ 1/2,
@@ -95,7 +95,9 @@ qmat <- qmat %>% mutate( Blame = case_when(btype == "curse" ~ 1/2,
                                                   btype == "shout" ~ 1/2,
                                                   btype == "scold" ~ -1))
 
-qmat <- select(qmat, mode, situ, Blame, Express) %>% as.matrix()
+attach(qmat)
+
+qmat <- subset.data.frame(qmat, select = c(mode, situ, Express,Blame)) %>% as.matrix()
 
 #-----------
 
@@ -130,3 +132,5 @@ resumen <- data.frame(Modelo = c("glmer", "eirm", "LLTM"),
                                     -2 * LLTModel$loglik + log(316)), 0))
 
 write.csv(resumen, "ResumenLLTM.csv")
+
+write.csv(LLTM, "LLTM.csv")
